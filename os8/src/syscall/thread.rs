@@ -29,7 +29,7 @@ pub fn sys_thread_create(entry: usize, arg: usize) -> isize {
         new_task.kernel_stack.get_top(),
         trap_handler as usize,
     );
-    (*new_task_trap_cx).x[10] = arg;
+    new_task_trap_cx.x[10] = arg;
 
     let mut process_inner = process.inner_exclusive_access();
     // add new thread to current process
