@@ -3,8 +3,8 @@ use crate::{
     task::{add_task, current_task, TaskControlBlock},
     trap::{trap_handler, TrapContext},
 };
-use alloc::sync::Arc;
-
+use alloc::vec;
+use alloc::{sync::Arc, vec::Vec};
 pub fn sys_thread_create(entry: usize, arg: usize) -> isize {
     let task = current_task().unwrap();
     let process = task.process.upgrade().unwrap();
@@ -32,12 +32,23 @@ pub fn sys_thread_create(entry: usize, arg: usize) -> isize {
     new_task_trap_cx.x[10] = arg;
 
     let mut process_inner = process.inner_exclusive_access();
-    // add new thread to current process
-    let tasks = &mut process_inner.tasks;
-    while tasks.len() < new_task_tid + 1 {
-        tasks.push(None);
+    let len = process_inner.semaphore_list.len();
+    while process_inner.tasks.len() < new_task_tid + 1 {
+        process_inner.tasks.push(None);
+        process_inner.mutex_allocation.push(Vec::new());
+        process_inner.mutex_need.push(None);
+        process_inner.mutex_finish.push(false);
+        process_inner.semaphore_allocation.push(vec![0; len]);
+        process_inner.semaphore_need.push(None);
+        process_inner.semaphore_finish.push(false);
     }
-    tasks[new_task_tid] = Some(Arc::clone(&new_task));
+    process_inner.tasks[new_task_tid] = Some(Arc::clone(&new_task));
+    process_inner.mutex_allocation[new_task_tid] = Vec::new();
+    process_inner.mutex_need[new_task_tid] = None;
+    process_inner.mutex_finish[new_task_tid] = false;
+    process_inner.semaphore_allocation[new_task_tid] = vec![0; len];
+    process_inner.semaphore_need[new_task_tid] = None;
+    process_inner.semaphore_finish[new_task_tid] = false;
     // add new task to scheduler
     add_task(Arc::clone(&new_task));
     new_task_tid as isize

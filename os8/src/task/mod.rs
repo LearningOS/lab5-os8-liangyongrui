@@ -130,7 +130,18 @@ pub fn exit_current_and_run_next(exit_code: i32) {
         process_inner.fd_table.clear();
     }
     // debug!("pcb dropped");
-
+    // let mut process_inner = process.inner_exclusive_access();
+    // for id in process_inner.mutex_allocation[tid].clone() {
+    //     process_inner.mutex_works[id] = true;
+    // }
+    // for (id, val) in process_inner.semaphore_allocation[tid]
+    //     .clone()
+    //     .into_iter()
+    //     .enumerate()
+    // {
+    //     process_inner.semaphore_works[id] += val;
+    // }
+    // drop(process_inner);
     // ++++++ release parent PCB
     drop(process);
 

@@ -31,7 +31,7 @@ enum State {
     Running,
     Ready,
 }
-
+#[allow(dead_code)]
 struct Task {
     id: usize,
     stack: Vec<u8>,

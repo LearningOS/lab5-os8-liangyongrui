@@ -19,6 +19,7 @@ pub struct ProcessControlBlock {
 
 // LAB5 HINT: you may add data structures for deadlock detection here
 pub struct ProcessControlBlockInner {
+    pub enable_deadlock_detect: bool,
     pub is_zombie: bool,
     pub memory_set: MemorySet,
     pub parent: Option<Weak<ProcessControlBlock>>,
@@ -27,8 +28,27 @@ pub struct ProcessControlBlockInner {
     pub fd_table: Vec<Option<Arc<dyn File + Send + Sync>>>,
     pub tasks: Vec<Option<Arc<TaskControlBlock>>>,
     pub task_res_allocator: RecycleAllocator,
+
     pub mutex_list: Vec<Option<Arc<dyn Mutex>>>,
+    /// mutex_works[i] = true 表示i锁还可以用
+    pub mutex_works: Vec<bool>,
+    /// mutex_allocation[i] = [j,k], 表示线程i 持有 j,k 两个锁  
+    pub mutex_allocation: Vec<Vec<usize>>,
+    /// mutex_need[i] = j, 表示线程i 在等待 j 锁
+    pub mutex_need: Vec<Option<usize>>,
+    // mutex_finish[i] = true 表示线程i已经执行完
+    pub mutex_finish: Vec<bool>,
+
     pub semaphore_list: Vec<Option<Arc<Semaphore>>>,
+    /// semaphore_works[i] = 2 表示i锁还可以用2次
+    pub semaphore_works: Vec<usize>,
+    /// semaphore_allocation[i][j] = 2, 表示线程i 持有 j 锁 2次  
+    pub semaphore_allocation: Vec<Vec<usize>>,
+    /// semaphore_need[i] = j, 表示线程i 在等待 j 锁
+    pub semaphore_need: Vec<Option<usize>>,
+    /// semaphore_finish[i] = true 表示线程i已经执行完
+    pub semaphore_finish: Vec<bool>,
+
     pub condvar_list: Vec<Option<Arc<Condvar>>>,
 }
 
@@ -97,6 +117,15 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    mutex_works: Vec::new(),
+                    mutex_allocation: Vec::new(),
+                    mutex_finish: Vec::new(),
+                    mutex_need: Vec::new(),
+                    enable_deadlock_detect: false,
+                    semaphore_works: Vec::new(),
+                    semaphore_allocation: Vec::new(),
+                    semaphore_need: Vec::new(),
+                    semaphore_finish: Vec::new(),
                 })
             },
         });
@@ -122,6 +151,14 @@ impl ProcessControlBlock {
         // add main thread to the process
         let mut process_inner = process.inner_exclusive_access();
         process_inner.tasks.push(Some(Arc::clone(&task)));
+        process_inner.mutex_allocation.push(Vec::new());
+        process_inner.mutex_need.push(None);
+        process_inner.mutex_finish.push(false);
+        let len = process_inner.semaphore_list.len();
+        process_inner.semaphore_allocation.push(vec![0; len]);
+        process_inner.semaphore_need.push(None);
+        process_inner.semaphore_finish.push(false);
+
         drop(process_inner);
         // add main thread to scheduler
         add_task(task);
@@ -218,6 +255,15 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    mutex_works: Vec::new(),
+                    mutex_allocation: Vec::new(),
+                    mutex_finish: Vec::new(),
+                    enable_deadlock_detect: false,
+                    mutex_need: Vec::new(),
+                    semaphore_works: Vec::new(),
+                    semaphore_allocation: Vec::new(),
+                    semaphore_need: Vec::new(),
+                    semaphore_finish: Vec::new(),
                 })
             },
         });
@@ -240,6 +286,14 @@ impl ProcessControlBlock {
         // attach task to child process
         let mut child_inner = child.inner_exclusive_access();
         child_inner.tasks.push(Some(Arc::clone(&task)));
+        child_inner.mutex_allocation.push(Vec::new());
+        child_inner.mutex_need.push(None);
+        child_inner.mutex_finish.push(false);
+
+        let len = child_inner.semaphore_list.len();
+        child_inner.semaphore_allocation.push(vec![0; len]);
+        child_inner.semaphore_need.push(None);
+        child_inner.semaphore_finish.push(false);
         drop(child_inner);
         // modify kernel_stack_top in trap_cx of this thread
         let task_inner = task.inner_exclusive_access();
@@ -257,12 +311,13 @@ impl ProcessControlBlock {
 
     pub fn kernel_process() -> Arc<Self> {
         let memory_set = MemorySet::kernel_copy();
-        let process = Arc::new(ProcessControlBlock {
+
+        Arc::new(ProcessControlBlock {
             pid: super::pid_alloc(),
             inner: unsafe {
                 UPSafeCell::new(ProcessControlBlockInner {
                     is_zombie: false,
-                    memory_set: memory_set,
+                    memory_set,
                     parent: None,
                     children: Vec::new(),
                     exit_code: 0,
@@ -272,9 +327,17 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    mutex_works: Vec::new(),
+                    mutex_allocation: Vec::new(),
+                    mutex_finish: Vec::new(),
+                    enable_deadlock_detect: false,
+                    mutex_need: Vec::new(),
+                    semaphore_works: Vec::new(),
+                    semaphore_allocation: Vec::new(),
+                    semaphore_need: Vec::new(),
+                    semaphore_finish: Vec::new(),
                 })
             },
-        });
-        process
+        })
     }
 }
